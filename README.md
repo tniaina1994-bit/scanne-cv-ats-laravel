@@ -1,58 +1,122 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Scanne-CV-ATS
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Analyseur de CV / ATS en **Laravel 13** (Blade + Tailwind 4 + Vite 8). Port fullstack de **ProjetATS** : extraction de texte (PDF/DOCX + OCR), matching de compétences, scoring ATS, recommandations.
 
-## About Laravel
+## Fonctionnalités
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **`/scan`** — upload CV (`.pdf` / `.docx`, ≤ 10 Mo) + offre d’emploi (éditeur enrichi, 4 modèles) → score, checks ATS, infos perso, compétences matchées/manquantes, recommandations
+- **`POST /api/scan`** — même analyse en JSON
+- **`/extract`** — extraction seule du texte (aperçu, CV d’exemple)
+- OCR **Tesseract** (`fra+eng`) en secours pour les PDF scannés
+- Extraction DOCX via CLI `unzip` (pas d’`ext-zip` requis)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Prérequis
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+| Outil | Rôle |
+| --- | --- |
+| PHP **≥ 8.3** (+ `pdo_sqlite`, `mbstring`, `openssl`, `fileinfo`, `tokenizer`, `xml`) | application |
+| Composer | dépendances PHP |
+| Node.js + npm | assets (Tailwind / Vite) |
+| SQLite | base par défaut (`database/database.sqlite`) |
+| `unzip` | lecture DOCX |
+| `pdftoppm` + `tesseract` | OCR des PDF scannés (optionnel mais recommandé) |
 
-## Learning Laravel
+> Sur Debian/Ubuntu (si droits root) : `sudo apt install unzip poppler-utils tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng`
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Installation
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+### Commande recommandée
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install          # dépendances PHP (nécessaire pour lancer Artisan)
+php artisan install:app   # .env, APP_KEY, SQLite, migrations, npm, build
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+`install:app` exécute dans l’ordre :
 
-## Contributing
+1. Vérification des prérequis (PHP, extensions, binaires)
+2. Création de `.env` depuis `.env.example` s’il manque
+3. Génération de `APP_KEY` si absente
+4. Création de `database/database.sqlite` si absente
+5. `composer install` si `vendor/` manque (`--skip-composer` pour ignorer)
+6. `php artisan migrate --force` (`--skip-migrate` pour ignorer)
+7. `npm install` + `npm run build` (`--skip-npm` pour ignorer)
+8. Nettoyage des caches locaux (config / views / routes)
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Options :
 
-## Code of Conduct
+```bash
+php artisan install:app --check     # vérifie les prérequis sans rien modifier
+php artisan install:app --skip-npm  # sans front
+php artisan install:app --skip-composer --skip-migrate --skip-npm  # config seule
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### Variante Composer
 
-## Security Vulnerabilities
+```bash
+composer setup
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Équivalent à `composer install` puis `php artisan install:app --skip-composer`.
 
-## License
+### Vérification rapide
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```bash
+php artisan about
+php artisan test --compact
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/up   # 200
+```
+
+## Démarrage
+
+```bash
+composer dev        # serve + Vite + … (recommandé en développement)
+# ou
+php artisan serve    # http://127.0.0.1:8000
+npm run dev          # assets en mode watch (autre terminal)
+```
+
+Puis ouvrir `/`, `/scan` ou `/extract`.
+
+## Tests & qualité
+
+```bash
+php artisan test --compact           # suite complète
+php artisan test --filter=ScanTest   # un fichier / nom
+vendor/bin/pint --format agent       # formatage PHP (après toute édition)
+npm run build                        # si le manifest Vite manque / UI périmée
+```
+
+## Configuration utile
+
+Fichier `.env` (voir `.env.example`) :
+
+| Clé | Défaut projet |
+| --- | --- |
+| `APP_NAME` | `Scanne-CV-ATS` |
+| `DB_CONNECTION` | `sqlite` |
+| `SESSION_DRIVER` | `database` |
+| `CACHE_STORE` | `database` |
+| `QUEUE_CONNECTION` | `database` |
+
+Les sessions / cache / queues utilisent la base : **lancez les migrations** avant de servir en HTTP.
+
+## API
+
+`POST /api/scan` — `multipart/form-data` :
+
+- `file` : PDF ou DOCX (≤ 10 Mo)
+- `job_offer` : texte de l’offre
+
+Réponse JSON : score, compétences matchées/manquantes, checks ATS, infos personnelles, recommandations.
+
+## Projet de référence
+
+Logique métier portée depuis **ProjetATS** (Angular + FastAPI) :
+
+- `ats-cv-analyzer/backend/app/api/routes/scan.py`
+- `ats-cv-analyzer/data/synonyms.json` → `resources/data/synonyms.json`
+
+## Licence
+
+MIT (squelette Laravel) — voir `composer.json`.
