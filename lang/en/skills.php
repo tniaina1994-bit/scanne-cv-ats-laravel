@@ -1,0 +1,28 @@
+<?php
+
+return [
+    'title' => 'Skills management',
+    'subtitle' => 'Add skills and synonyms that overlay the built-in library',
+    'add_title' => 'Add a skill',
+    'name' => 'Name',
+    'category' => 'Category',
+    'synonyms' => 'Synonyms (comma-separated)',
+    'source' => 'Source',
+    'source_builtin' => 'Built-in',
+    'source_custom' => 'Custom',
+    'actions' => 'Actions',
+    'edit' => 'Edit',
+    'save' => 'Save',
+    'delete' => 'Delete',
+    'create' => 'Create',
+    'cancel' => 'Cancel',
+    'builtin_count' => 'Built-in skills',
+    'custom_count' => 'Custom skills',
+    'created' => 'Skill created.',
+    'updated' => 'Skill updated.',
+    'deleted' => 'Skill deleted.',
+    'confirm_delete' => 'Delete this skill?',
+    'empty' => 'No custom skills yet.',
+    'current_synonyms' => 'Current synonyms',
+    'none' => '—',
+];

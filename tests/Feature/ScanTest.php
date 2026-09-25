@@ -15,7 +15,7 @@ class ScanTest extends TestCase
 
     public function test_scan_page_loads(): void
     {
-        $this->get('/scan')->assertOk()->assertSee('Analyser un CV');
+        $this->get('/scan')->assertOk()->assertSee(__('scan.title'));
     }
 
     public function test_scan_requires_file(): void

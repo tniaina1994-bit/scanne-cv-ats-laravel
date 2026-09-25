@@ -1,0 +1,28 @@
+<?php
+
+return [
+    'title' => 'Gestion des compétences',
+    'subtitle' => 'Ajoutez des compétences et synonymes qui s\'overlay sur la base intégrée',
+    'add_title' => 'Ajouter une compétence',
+    'name' => 'Nom',
+    'category' => 'Catégorie',
+    'synonyms' => 'Synonymes (séparés par des virgules)',
+    'source' => 'Source',
+    'source_builtin' => 'Intégrée',
+    'source_custom' => 'Personnalisée',
+    'actions' => 'Actions',
+    'edit' => 'Modifier',
+    'save' => 'Enregistrer',
+    'delete' => 'Supprimer',
+    'create' => 'Créer',
+    'cancel' => 'Annuler',
+    'builtin_count' => 'Compétences intégrées',
+    'custom_count' => 'Compétences personnalisées',
+    'created' => 'Compétence ajoutée.',
+    'updated' => 'Compétence mise à jour.',
+    'deleted' => 'Compétence supprimée.',
+    'confirm_delete' => 'Supprimer cette compétence ?',
+    'empty' => 'Aucune compétence personnalisée pour le moment.',
+    'current_synonyms' => 'Synonymes actuels',
+    'none' => '—',
+];

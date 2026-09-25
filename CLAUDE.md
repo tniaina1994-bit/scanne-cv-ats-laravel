@@ -28,10 +28,17 @@ Behaviors preserved when porting:
 
 ## ATS analysis (ported)
 
-- `GET/POST /scan` — Blade UI: upload CV + job offer textarea (4 templates: Support IT / Développeur / DevOps / Data) → score, ATS checks, personal info, matched/missing skills with match-type badges, recommendations.
-- `POST /api/scan` — JSON API (same contract shape as ProjetATS `ScanResult`).
-- Services: `SkillLibrary` (TECH_SKILLS + synonyms + multi-level match), `CvAnalyzer` (scoring/ATS checks/recommendations), `TfIdfSemanticMatcher` (pure-PHP TF-IDF cosine), `PersonalInfoExtractor`, `DocumentTextExtractor`.
-- Synonyms data: `resources/data/synonyms.json`.
+- `GET/POST /scan` — Blade UI: upload CV + job offer rich editor (4 templates: Support IT / Développeur / DevOps / Data) → score, ATS checks, personal info, matched/missing skills with match-type badges, recommendations, reformulation suggestions. PRG + session flash. Drag & drop, progress bar, print CSS, dark-mode toggle. PDF without native text → `OcrExtractJob` (database queue).
+- `POST /api/scan` — JSON API (same contract as ProjetATS `ScanResult`) + `reformulation_suggestions`. Throttled 10/min/IP (`api-scan`). Results cached 1h by `sha256(file+job_offer)`.
+- `GET/POST /compare` — compare 2 CVs against one offer (scores, missing-skill delta, suggestions).
+- `GET/POST /letter` — cover letter vs offer (`CoverLetterAnalyzer`): skills/length/structure/alignment sub-scores + FR suggestions (F-10).
+- `GET/POST /admin/skills` — auth-guarded CRUD for custom skills (`skills` table overlays `synonyms.json` at runtime) (F-14).
+- Auth: `GET/POST /login` (throttle 5/min), `GET/POST /register`, `POST /logout`. Named routes `login`/`register` (required by Laravel `auth` middleware redirect).
+- History: routes `/history*` + `/share/*` active (`HistoryController`); nav links present in home/scan/compare/extract/history views. CSV export + signed share links.
+- i18n chrome: `lang/{fr,en}/*.php`, `SetLocale` middleware, `?lang=fr|en` persists session. Default `APP_LOCALE=fr`.
+- Services: `SkillLibrary`, `CvAnalyzer`, `TfIdfSemanticMatcher`, `PersonalInfoExtractor`, `DocumentTextExtractor` (`extract($path,$ext,$allowOcr=true)`), `ReformulationSuggester`, `CvSectionDetector`, `JobOfferRequirements`, `CoverLetterAnalyzer`.
+- Advanced analysis (F-10…F-17): `scores.semantic` (weight default 0 via `ATS_WEIGHT_SEMANTIC`), sections map + `section_keys`, `experience_required`/`experience_gap` recommendations, FR/MG TF-IDF stop-words + `MULTI_LANG_ALIASES`, configurable weights in `config/scan.php` (`ATS_WEIGHT_*`), enriched reformulation templates.
+- CI: `.github/workflows/ci.yml` (PHP 8.5, pint, tests, npm build).
 
 ## Text extraction test UI
 
@@ -51,10 +58,15 @@ npm run build              # if Vite manifest missing / UI stale
 ## Gotchas
 
 - Default DB file: `database/database.sqlite`; session, cache, and queue all use database tables — run migrations before relying on them.
-- `CLAUDE.md` is a byte-for-byte copy of this file (Boost). Keep them in sync when editing.
+- `CLAUDE.md` is a byte-for-byte copy of this file (Boost). Keep them in sync when editing (`cp AGENTS.md CLAUDE.md`).
 - Boost skills live in `.agents/skills/`; `.ai/rules` does not exist yet (skip rule lookup until it does).
 - Health route: `GET /up` (see `bootstrap/app.php`).
 - Sample CV paths in tests/controllers point at ProjetATS `data/` (absolute path) — tests skip if missing.
+- Locale keys use per-group files (`lang/fr/scan.php` + `__('scan.title')`), not a flat `lang/fr.php`.
+- OCR: **sync by default** in the web request (`config('scan.ocr_async') === false`); set `SCAN_OCR_ASYNC=true` to queue `OcrExtractJob` (then run `php artisan queue:work`). Pending flash links to history. Tests use `Queue::fake()` / `QUEUE_CONNECTION=sync`.
+- Forms/UI strings use `lang/{fr,en}/{scan,compare,extract,history,home,nav,editor,letter,skills}.php` keys (`__('scan.*')` etc.).
+- `phpunit.xml` sets `CACHE_STORE=array`, `SESSION_DRIVER=array`, `QUEUE_CONNECTION=sync`, `APP_ENV=testing`.
+- Run Pint + full test suite **sequentially** (never parallel) — they race on `.env`/config.
 
 <laravel-boost-guidelines>
 === foundation rules ===

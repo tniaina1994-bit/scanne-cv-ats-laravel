@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Test extraction — {{ config('app.name') }}</title>
+        <title>{{ __('extract.title') }} — {{ config('app.name') }}</title>
         @fonts
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
@@ -11,14 +11,26 @@
         <main class="mx-auto flex max-w-3xl flex-col gap-6 p-6 lg:p-10">
             <header class="flex items-start justify-between gap-4">
                 <div>
-                    <h1 class="text-2xl font-semibold tracking-tight">Test extraction PDF / DOCX</h1>
+                    <h1 class="text-2xl font-semibold tracking-tight">{{ __('extract.title') }}</h1>
                     <p class="mt-1 text-sm opacity-70">
-                        PDF texte · DOCX · PDF scanné (OCR Tesseract <code>fra+eng</code>)
+                        {{ __('extract.subtitle') }}
                     </p>
                 </div>
-                <nav class="flex gap-4 text-sm">
-                    <a href="{{ route('scan.index') }}" class="underline underline-offset-4 opacity-70 hover:opacity-100">Scanner</a>
-                    <a href="{{ route('home') }}" class="underline underline-offset-4 opacity-70 hover:opacity-100">Accueil</a>
+                <nav class="flex flex-wrap gap-4 text-sm">
+                    <a href="{{ route('scan.index') }}" class="underline underline-offset-4 opacity-70 hover:opacity-100">{{ __('nav.scan') }}</a>
+                    <a href="{{ route('history.index') }}" class="underline underline-offset-4 opacity-70 hover:opacity-100">{{ __('nav.history') }}</a>
+                    @auth
+                        <form method="POST" action="{{ route('auth.logout') }}" class="inline">
+                            @csrf
+                            <button type="submit" class="underline underline-offset-4 opacity-70 hover:opacity-100">{{ __('nav.logout') }}</button>
+                        </form>
+                    @else
+                        <a href="{{ route('login') }}" class="underline underline-offset-4 opacity-70 hover:opacity-100">{{ __('nav.login') }}</a>
+                    @endauth
+                    <a href="{{ route('home') }}" class="underline underline-offset-4 opacity-70 hover:opacity-100">{{ __('nav.home') }}</a>
+                    <button type="button" data-theme-toggle class="underline underline-offset-4 opacity-70 hover:opacity-100">
+                        <span data-theme-label>{{ __('nav.dark') }}</span>
+                    </button>
                 </nav>
             </header>
 
@@ -39,7 +51,7 @@
             @endif
 
             <section class="rounded-lg border border-[#e3e3e0] bg-white p-5 dark:border-[#3E3E3A] dark:bg-[#161615]">
-                <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide opacity-70">Fichier à analyser</h2>
+                <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide opacity-70">{{ __('extract.file_section') }}</h2>
 
                 <form method="POST" action="{{ route('extract.store') }}" enctype="multipart/form-data" class="flex flex-col gap-3 sm:flex-row sm:items-center" id="extract-form">
                     @csrf
@@ -56,23 +68,23 @@
                             type="submit"
                             class="shrink-0 rounded-md bg-[#1b1b18] px-5 py-2 text-sm font-medium text-white hover:opacity-90 dark:bg-[#EDEDEC] dark:text-black"
                         >
-                            Extraire le texte
+                            {{ __('extract.submit') }}
                         </button>
                         <button
                             type="button"
                             id="clear-all"
                             class="shrink-0 rounded-md border border-[#e3e3e0] px-5 py-2 text-sm font-medium opacity-80 hover:opacity-100 dark:border-[#3E3E3A]"
                         >
-                            Rejeter / Effacer tout
+                            {{ __('extract.clear') }}
                         </button>
                     </div>
                 </form>
 
-                <p class="mt-2 text-xs opacity-60">Formats : .pdf, .docx — max 10 Mo</p>
+                <p class="mt-2 text-xs opacity-60">{{ __('extract.formats') }}</p>
 
                 @if (! empty($samples))
                     <div class="mt-5 border-t border-[#e3e3e0] pt-4 dark:border-[#3E3E3A]">
-                        <h3 class="mb-2 text-sm font-semibold uppercase tracking-wide opacity-70">CV d’exemple (ProjetATS)</h3>
+                        <h3 class="mb-2 text-sm font-semibold uppercase tracking-wide opacity-70">{{ __('extract.samples') }}</h3>
                         <div class="flex flex-wrap gap-2">
                             @foreach ($samples as $sample)
                                 <form method="POST" action="{{ route('extract.sample') }}">
@@ -94,18 +106,18 @@
             @isset($result)
                 <section id="extract-results" class="rounded-lg border border-[#e3e3e0] bg-white p-5 dark:border-[#3E3E3A] dark:bg-[#161615]">
                     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-                        <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">Résultat</h2>
+                        <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">{{ __('extract.result') }}</h2>
                         <div class="flex flex-wrap gap-2 text-xs">
                             <span class="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-[#3E3E3A]">{{ $result['filename'] }}</span>
                             <span class="rounded-full bg-gray-100 px-2.5 py-1 uppercase dark:bg-[#3E3E3A]">{{ $result['extension'] }}</span>
                             <span class="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-[#3E3E3A]">{{ number_format($result['size'] / 1024, 0) }} KB</span>
-                            <span class="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-[#3E3E3A]">{{ $result['chars'] }} caractères</span>
+                            <span class="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-[#3E3E3A]">{{ $result['chars'] }} {{ __('extract.chars') }}</span>
                             <span class="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-[#3E3E3A]">{{ $result['ms'] }} ms</span>
                             <span class="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-[#3E3E3A]">{{ $result['method'] }}</span>
                             @if ($result['ocrUsed'])
-                                <span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-900 dark:bg-amber-900 dark:text-amber-100">OCR utilisé</span>
+                                <span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-900 dark:bg-amber-900 dark:text-amber-100">{{ __('extract.ocr_used') }}</span>
                             @else
-                                <span class="rounded-full bg-green-100 px-2.5 py-1 text-green-900 dark:bg-green-900 dark:text-green-100">texte natif</span>
+                                <span class="rounded-full bg-green-100 px-2.5 py-1 text-green-900 dark:bg-green-900 dark:text-green-100">{{ __('extract.native_text') }}</span>
                             @endif
                         </div>
                     </div>

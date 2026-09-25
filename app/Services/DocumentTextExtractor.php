@@ -16,14 +16,14 @@ class DocumentTextExtractor
     /**
      * @return array{text: string, method: string, ocr_used: bool}
      */
-    public function extract(string $path, string $extension): array
+    public function extract(string $path, string $extension, bool $allowOcr = true): array
     {
         if (! is_file($path)) {
             throw new RuntimeException('Fichier introuvable.');
         }
 
         return match (strtolower($extension)) {
-            'pdf' => $this->extractPdf($path),
+            'pdf' => $this->extractPdf($path, $allowOcr),
             'docx' => $this->extractDocx($path),
             default => throw new RuntimeException('Format non pris en charge : '.$extension),
         };
@@ -32,7 +32,7 @@ class DocumentTextExtractor
     /**
      * @return array{text: string, method: string, ocr_used: bool}
      */
-    private function extractPdf(string $path): array
+    private function extractPdf(string $path, bool $allowOcr = true): array
     {
         $text = '';
 
@@ -47,6 +47,14 @@ class DocumentTextExtractor
             return [
                 'text' => trim($text),
                 'method' => 'smalot/pdfparser',
+                'ocr_used' => false,
+            ];
+        }
+
+        if (! $allowOcr) {
+            return [
+                'text' => '',
+                'method' => 'none',
                 'ocr_used' => false,
             ];
         }

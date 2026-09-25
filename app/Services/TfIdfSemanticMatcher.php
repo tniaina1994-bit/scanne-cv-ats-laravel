@@ -7,16 +7,26 @@ namespace App\Services;
  */
 class TfIdfSemanticMatcher
 {
-    private const SIMILARITY_THRESHOLD = 0.15;
-
     private const MAX_FEATURES = 5000;
 
     /**
-     * sklearn's ENGLISH_STOP_WORDS.
+     * sklearn ENGLISH_STOP_WORDS + common French stop words (F-15).
      *
      * @var list<string>
      */
     private const STOP_WORDS = [
+        // French
+        'au', 'aux', 'avec', 'ce', 'ces', 'dans', 'de', 'des', 'du', 'elle', 'en', 'et',
+        'eux', 'il', 'ils', 'je', 'la', 'le', 'les', 'leur', 'lui', 'ma', 'mais', 'me',
+        'même', 'mes', 'moi', 'mon', 'ne', 'nos', 'notre', 'nous', 'on', 'ou', 'où',
+        'par', 'pas', 'pour', 'qu', 'que', 'qui', 'sa', 'se', 'ses', 'son', 'sur', 'ta',
+        'te', 'tes', 'toi', 'ton', 'tu', 'un', 'une', 'vos', 'votre', 'vous', 'c',
+        'd', 'j', 'l', 'à', 'est', 'sont', 'été', 'être', 'avoir', 'fait', 'comme',
+        'plus', 'tout', 'tous', 'toute', 'toutes', 'aussi', 'entre', 'chez', 'sans',
+        // Malagasy (common function words)
+        'ary', 'na', 'fa', 'koatra', 'ho', 'ianao', 'izahay', 'izy', 'izy ireo', 'amin',
+        'amin\'ny', 'any', 'eo', 'ity', 'izay', 'izany', 'hoatra', 'no',
+        // sklearn ENGLISH_STOP_WORDS
         'a', 'about', 'above', 'across', 'after', 'afterwards', 'again', 'against', 'all', 'almost', 'alone', 'along',
         'already', 'also', 'although', 'always', 'am', 'among', 'amongst', 'amoungst', 'amount', 'an', 'and', 'another',
         'any', 'anyhow', 'anyone', 'anything', 'anyway', 'anywhere', 'are', 'around', 'as', 'at', 'back', 'be',
@@ -96,7 +106,9 @@ class TfIdfSemanticMatcher
                 }
             }
 
-            if ($maxSimilarity > self::SIMILARITY_THRESHOLD) {
+            $threshold = $this->threshold();
+
+            if ($maxSimilarity > $threshold) {
                 $semanticResults[] = [
                     'skill' => $skill,
                     'similarity' => round($maxSimilarity, 3),
@@ -106,6 +118,24 @@ class TfIdfSemanticMatcher
         }
 
         return $semanticResults;
+    }
+
+    private function threshold(): float
+    {
+        try {
+            if (function_exists('app') && app()->bound('config')) {
+                /** @var mixed $configured */
+                $configured = config('scan.semantic_threshold');
+
+                if (is_numeric($configured) && (float) $configured > 0) {
+                    return (float) $configured;
+                }
+            }
+        } catch (Throwable) {
+            // Fallback for unit tests without a container.
+        }
+
+        return 0.15;
     }
 
     /**

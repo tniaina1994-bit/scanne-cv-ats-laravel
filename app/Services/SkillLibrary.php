@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\Skill;
+use Illuminate\Support\Facades\Schema;
+
 class SkillLibrary
 {
     /**
@@ -161,11 +164,59 @@ class SkillLibrary
         'tcp/ip',
     ];
 
+    /**
+     * Multi-language aliases (FR / EN / MG) mapping to canonical TECH_SKILLS keys (F-15).
+     *
+     * @var array<string, string>
+     */
+    private const MULTI_LANG_ALIASES = [
+        'conteneur' => 'docker',
+        'conteneurs' => 'docker',
+        'orchestration de conteneurs' => 'kubernetes',
+        'kubernetes' => 'kubernetes',
+        'depot' => 'git',
+        'dépôt' => 'git',
+        'gestion de version' => 'git',
+        'base de donnees' => 'sql',
+        'base de données' => 'sql',
+        'langage python' => 'python',
+        'developpement web' => 'web',
+        'développement web' => 'web',
+        'site web' => 'web',
+        'integral' => 'full stack',
+        'intégral' => 'full stack',
+        'debogage' => 'debugging',
+        'débogage' => 'debugging',
+        'assurance qualite' => 'qa',
+        'assurance qualité' => 'qa',
+        'traitement de donnees' => 'data',
+        'traitement de données' => 'data',
+        'informatique cloud' => 'cloud',
+        'informatyka' => 'it',
+        'fanabeazana' => 'data',
+        'rindra' => 'devops',
+        'mpamorona' => 'dev',
+        'asalonga' => 'development',
+        'maha-tsindry' => 'it',
+        'teknolojia' => 'technology',
+        'orinasa' => 'database',
+        'fitsipika' => 'programming',
+        'fampitaovana' => 'tools',
+        'faha-mahay' => 'skills',
+        'fikasana' => 'security',
+        'fampandrenesana' => 'testing',
+    ];
+
     /** @var array<string, list<string>> */
     private array $synonyms = [];
 
     /** @var array<string, string> */
     private array $synonymReverse = [];
+
+    /** @var array<string, list<string>> */
+    private array $builtinSynonyms = [];
+
+    private bool $customLoaded = false;
 
     public function __construct(?string $synonymsPath = null)
     {
@@ -176,6 +227,64 @@ class SkillLibrary
 
             if (is_array($decoded)) {
                 $this->synonyms = $decoded;
+            }
+        }
+
+        $this->builtinSynonyms = $this->synonyms;
+        $this->rebuildReverse();
+        $this->refreshFromDatabase();
+    }
+
+    /**
+     * Overlay custom skills from the DB (F-14). Safe when the table is missing.
+     */
+    public function refreshFromDatabase(bool $force = false): void
+    {
+        if ($this->customLoaded && ! $force) {
+            return;
+        }
+
+        $this->customLoaded = true;
+        $this->synonyms = $this->builtinSynonyms;
+
+        try {
+            if (! function_exists('app') || ! app()->bound('db')) {
+                $this->rebuildReverse();
+
+                return;
+            }
+
+            if (! Schema::hasTable('skills')) {
+                $this->rebuildReverse();
+
+                return;
+            }
+
+            foreach (Skill::query()->get() as $skill) {
+                $name = mb_strtolower((string) $skill->name);
+                $syns = array_values(array_filter(array_map(
+                    static fn ($s): string => mb_strtolower((string) $s),
+                    (array) ($skill->synonyms ?? [])
+                )));
+                $this->synonyms[$name] = array_values(array_unique([...($this->synonyms[$name] ?? []), ...$syns]));
+            }
+        } catch (Throwable) {
+            // No DB in unit tests — keep builtin map only.
+        }
+
+        $this->rebuildReverse();
+    }
+
+    private function rebuildReverse(): void
+    {
+        $this->synonymReverse = [];
+
+        foreach (self::MULTI_LANG_ALIASES as $alias => $canonical) {
+            $aliasLower = mb_strtolower((string) $alias);
+            $canonicalLower = mb_strtolower((string) $canonical);
+
+            if ($aliasLower !== $canonicalLower) {
+                $this->synonymReverse[$aliasLower] = $canonicalLower;
             }
         }
 
@@ -193,6 +302,8 @@ class SkillLibrary
      */
     public function synonyms(): array
     {
+        $this->refreshFromDatabase();
+
         return $this->synonyms;
     }
 
@@ -210,11 +321,18 @@ class SkillLibrary
      */
     public function extractSkillsFromJob(string $jobContent): array
     {
+        $this->refreshFromDatabase();
         $found = [];
         $contentLower = mb_strtolower($jobContent);
 
         foreach (self::TECH_SKILLS as $skill) {
             if ($this->matchSkillInCv($skill, $contentLower)) {
+                $found[] = mb_strtoupper($skill);
+            }
+        }
+
+        foreach (array_keys($this->synonyms) as $skill) {
+            if (! in_array($skill, self::TECH_SKILLS, true) && $this->matchSkillInCv($skill, $contentLower)) {
                 $found[] = mb_strtoupper($skill);
             }
         }
@@ -236,6 +354,7 @@ class SkillLibrary
      */
     public function detectSkillsInCv(string $cvTextLower): array
     {
+        $this->refreshFromDatabase();
         $found = [];
 
         foreach (self::TECH_SKILLS as $skill) {
@@ -259,7 +378,7 @@ class SkillLibrary
             }
         }
 
-        return $found;
+        return array_values(array_unique($found));
     }
 
     /**
@@ -270,6 +389,7 @@ class SkillLibrary
      */
     public function multiLevelMatch(string $skill, string $cvTextLower, array $cvSkillsDetected): array
     {
+        $this->refreshFromDatabase();
         $skillLower = mb_strtolower($skill);
 
         if ($this->matchSkillInCv($skill, $cvTextLower)) {

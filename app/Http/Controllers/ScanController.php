@@ -2,44 +2,30 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\OcrExtractJob;
+use App\Models\Scan;
 use App\Services\CvAnalyzer;
 use App\Services\DocumentTextExtractor;
+use App\Services\JobOfferEditor;
+use App\Services\ReformulationSuggester;
 use App\Services\SkillLibrary;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 use RuntimeException;
 use Throwable;
 
 class ScanController extends Controller
 {
-    /**
-     * Job offer templates ported from ProjetATS scan.component.ts (HTML for the rich editor).
-     *
-     * @var array<string, string>
-     */
-    private const TEMPLATES = [
-        'support-it' => '<h2>Support Technique Informatique &amp; Administration Réseau Système</h2><h3>Compétences requises</h3><ul><li>Windows Server</li><li>Active Directory</li><li>Linux (Ubuntu, Debian)</li><li>TCP/IP</li><li>DNS</li><li>DHCP</li><li>VPN</li><li>Firewall</li><li>Virtualisation (VMware, Hyper-V)</li><li>Cisco</li><li>MikroTik</li><li>Migration de données</li></ul><h3>Missions</h3><ul><li>Installation et configuration de postes de travail</li><li>Gestion des comptes utilisateurs et des droits d\'accès</li><li>Maintenance des serveurs et infrastructures réseau</li><li>Dépannage et résolution des incidents techniques</li><li>Mise en place et administration des équipements réseau</li><li>Sauvegarde et restauration des données</li><li>Suivi des performances du réseau</li><li>Documentation technique et reporting</li></ul>',
-        'dev' => '<h2>Développeur Full Stack</h2><h3>Compétences requises</h3><ul><li>Python</li><li>JavaScript</li><li>React</li><li>Node.js</li><li>PostgreSQL</li><li>Git</li></ul><h3>Missions</h3><ul><li>Développement d\'applications web</li><li>Maintenance du code existant</li><li>Participation aux revues de code</li></ul>',
-        'devops' => '<h2>Ingénieur DevOps</h2><h3>Compétences requises</h3><ul><li>Docker</li><li>Kubernetes</li><li>CI/CD</li><li>AWS ou Azure</li><li>Linux</li><li>Terraform</li></ul><h3>Missions</h3><ul><li>Mise en place de pipelines CI/CD</li><li>Gestion de l\'infrastructure cloud</li><li>Automatisation du déploiement</li></ul>',
-        'data' => '<h2>Data Engineer</h2><h3>Compétences requises</h3><ul><li>Python</li><li>SQL</li><li>Apache Spark</li><li>Airflow</li><li>AWS/GCP</li><li>ETL</li></ul><h3>Missions</h3><ul><li>Conception de pipelines de données</li><li>Optimisation des performances</li><li>Qualité des données</li></ul>',
-    ];
-
-    /**
-     * @var array<string, string>
-     */
-    private const TEMPLATE_LABELS = [
-        'support-it' => 'Support IT',
-        'dev' => 'Développeur',
-        'devops' => 'DevOps',
-        'data' => 'Data',
-    ];
-
     public function __construct(
         private readonly DocumentTextExtractor $extractor,
         private readonly CvAnalyzer $analyzer,
         private readonly SkillLibrary $skillLibrary,
+        private readonly ReformulationSuggester $reformulator,
+        private readonly JobOfferEditor $jobOfferEditor,
     ) {}
 
     public function index(): View
@@ -65,10 +51,31 @@ class ScanController extends Controller
         $file = $request->file('file');
         $jobOffer = (string) $request->input('job_offer');
         $jobOfferHtmlInput = (string) $request->input('job_offer_html', '');
-        $jobOfferHtml = $this->sanitizeJobOfferHtml($jobOfferHtmlInput !== '' ? $jobOfferHtmlInput : $jobOffer);
+        $jobOfferHtml = $this->jobOfferEditor->sanitizeHtml($jobOfferHtmlInput !== '' ? $jobOfferHtmlInput : $jobOffer);
 
         if (trim($jobOffer) === '') {
-            $jobOffer = trim(html_entity_decode(strip_tags($jobOfferHtml), ENT_QUOTES | ENT_HTML5));
+            $jobOffer = $this->jobOfferEditor->plainText('', $jobOfferHtml);
+        }
+
+        if (config('scan.ocr_async') && strtolower($file->getClientOriginalExtension()) === 'pdf') {
+            $native = $this->extractor->extract((string) $file->getRealPath(), 'pdf', false);
+
+            if (trim($native['text']) === '') {
+                $stored = $file->storeAs('pending-ocr', uniqid('ocr-', true).'.pdf');
+                OcrExtractJob::dispatch(
+                    (string) $stored,
+                    $file->getClientOriginalName(),
+                    $jobOffer,
+                    $jobOfferHtml,
+                    Auth::id(),
+                );
+
+                return redirect()
+                    ->route('scan.index')
+                    ->with('scan.pending', __('scan.ocr_pending'))
+                    ->with('scan.job_offer', $jobOffer)
+                    ->with('scan.job_offer_html', $jobOfferHtml);
+            }
         }
 
         try {
@@ -86,11 +93,14 @@ class ScanController extends Controller
                 ->with('scan.job_offer_html', $jobOfferHtml);
         }
 
+        $scan = $this->persistScan($result, $jobOffer, $jobOfferHtml);
+
         return redirect()
             ->route('scan.index')
             ->with('scan.result', $result)
             ->with('scan.job_offer', $jobOffer)
-            ->with('scan.job_offer_html', $jobOfferHtml);
+            ->with('scan.job_offer_html', $jobOfferHtml)
+            ->with('scan.id', $scan?->id);
     }
 
     public function api(Request $request): JsonResponse
@@ -120,36 +130,39 @@ class ScanController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>  $result
+     */
+    private function persistScan(array $result, string $jobOffer, string $jobOfferHtml): ?Scan
+    {
+        try {
+            return Scan::create([
+                'user_id' => Auth::id(),
+                'filename' => (string) ($result['filename'] ?? 'cv'),
+                'score' => (int) ($result['analysis']['global_score'] ?? 0),
+                'ocr_used' => (bool) ($result['ocr_used'] ?? false),
+                'job_offer' => mb_substr($jobOffer, 0, 50000),
+                'job_offer_html' => $jobOfferHtml !== '' ? mb_substr($jobOfferHtml, 0, 50000) : null,
+                'result' => $result,
+                'content_hash' => hash('sha256', $jobOffer."\n".($result['filename'] ?? '')."\n".json_encode($result['analysis']['matched_skills'] ?? [])),
+            ]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * @param  array<string, mixed>|null  $result
      */
     private function viewResult(?string $error = null, ?string $jobOffer = null, ?array $result = null, ?string $jobOfferHtml = null): View
     {
         return view('scan.index', [
-            'templates' => self::TEMPLATE_LABELS,
-            'templateContents' => self::TEMPLATES,
+            'templates' => $this->jobOfferEditor->templateLabels(),
+            'templateContents' => $this->jobOfferEditor->templateContents(),
             'error' => $error,
             'jobOffer' => $jobOffer,
             'jobOfferHtml' => $jobOfferHtml,
             'result' => $result,
         ]);
-    }
-
-    private function sanitizeJobOfferHtml(string $html): string
-    {
-        if (trim($html) === '') {
-            return '';
-        }
-
-        if (! preg_match('/<[a-z][\s\S]*>/i', $html)) {
-            return e($html);
-        }
-
-        $clean = strip_tags($html, '<h2><h3><h4><p><ul><ol><li><strong><b><em><i><u><br><pre><code><div><span>');
-        $clean = preg_replace('/\s*on\w+\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $clean) ?? $clean;
-        $clean = preg_replace('/\s*style\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $clean) ?? $clean;
-        $clean = preg_replace('/\s*class\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $clean) ?? $clean;
-
-        return $clean;
     }
 
     /**
@@ -185,10 +198,15 @@ class ScanController extends Controller
         }
 
         $jobSkills = $this->skillLibrary->extractSkillsFromJob($jobOffer);
-        $analysis = $this->analyzer->analyze($cvText, $jobSkills);
+        $cacheKey = 'scan:'.hash('sha256', (string) file_get_contents($path)."\n".$jobOffer);
+
+        $analysis = Cache::remember($cacheKey, now()->addHour(), function () use ($cvText, $jobSkills, $jobOffer) {
+            return $this->analyzer->analyze($cvText, $jobSkills, $jobOffer);
+        });
 
         $elapsedMs = (int) round((microtime(true) - $startedAt) * 1000);
         $preview = mb_strlen($cvText) > 500 ? mb_substr($cvText, 0, 500).'...' : $cvText;
+        $analysis['reformulation_suggestions'] = $this->reformulator->suggest($analysis);
 
         return [
             'filename' => $filename,
